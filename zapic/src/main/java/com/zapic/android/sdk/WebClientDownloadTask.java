@@ -11,6 +11,7 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.Random;
 
 import javax.net.ssl.HttpsURLConnection;
 
@@ -137,8 +138,22 @@ final class WebClientDownloadTask extends AsyncTask<Void, Void, String> {
             if (failures < 10) {
                 ++failures;
             }
+            try {
+                int expoBackoff = (int)(Math.pow(2, failures)) * 1000;
+                int cap = 50000;
+                Random r = new Random();
+                //TO Remove jitter use maxSleep in sleep()
+                int maxSleep = (int) Math.min(expoBackoff,cap);
+                int sleepTime = r.nextInt(maxSleep);
+                Thread.sleep(sleepTime);
+                sleepTime /= 1000;
+                Log.d(TAG, String.format("Retrying download in %d seconds", sleepTime));
+            } catch (InterruptedException ignored) {
+                // Ignoring interruptions in the Thread sleep so that
+                // retries continue
+                Log.e(TAG,ignored.toString());
+            }
 
-            Log.d(TAG, String.format("Retrying download in %d seconds", 0));
         } while (!this.isCancelled());
         return null;
     }
