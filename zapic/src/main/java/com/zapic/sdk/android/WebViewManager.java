@@ -104,6 +104,11 @@ final class WebViewManager {
     private static final int ACTION_TYPE_SHOW_SHARE_MENU = 1007;
 
     /**
+     * Identifies the "CLOSE_PAGE_REQUESTED" action type.
+     */
+    private static final int ACTION_TYPE_SMS_VERIFICATION_REQUESTED = 1008;
+
+    /**
      * The tag used to identify log messages.
      */
     @NonNull
@@ -223,6 +228,9 @@ final class WebViewManager {
                         break;
                     case ACTION_TYPE_SHOW_SHARE_MENU:
                         onShowShareMenuHandled((Map<String, Object>) msg.obj);
+                        break;
+                    case ACTION_TYPE_SMS_VERIFICATION_REQUESTED:
+                        break;
                     default:
                         break;
                 }

@@ -85,6 +85,18 @@ public final class ZapicActivity extends Activity {
     private ViewPropertyAnimator mAnimation;
 
     /**
+     * The image chooser callback.
+     */
+    @Nullable
+    private ValueCallback<Uri[]> mImageChooserCallback;
+
+    /**
+     * The temporarily shared image URI for camera capture.
+     */
+    @Nullable
+    private Uri mImageUriForCamera;
+
+    /**
      * A value indicating whether the activity has started.
      */
     private boolean mStarted;
@@ -100,18 +112,6 @@ public final class ZapicActivity extends Activity {
      */
     @Nullable
     private ViewManager mViewManager;
-
-    /**
-     * The image chooser callback.
-     */
-    @Nullable
-    private ValueCallback<Uri[]> mImageChooserCallback;
-
-    /**
-     * The temporarily shared image URI for camera capture.
-     */
-    @Nullable
-    private Uri mImageUriForCamera;
 
     /**
      * Creates a new {@link ZapicActivity} instance.
@@ -637,11 +637,11 @@ public final class ZapicActivity extends Activity {
 
         if (includeCamera) {
             // Find camera activities.
-            final File imageDirectory = new File(this.getCacheDir(), "Zapic" + File.separator + "Share");
+            final File imageDirectory = new File(getCacheDir(), "Zapic" + File.separator + "Share");
             if (imageDirectory.isDirectory() || imageDirectory.mkdirs()) {
                 final File imageFile = new File(imageDirectory, "IMG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".jpg");
                 final String packageName = getPackageName();
-                final Uri imageUri = FileProvider.getUriForFile(this.getApplicationContext(), packageName + ".zapic", imageFile);
+                final Uri imageUri = FileProvider.getUriForFile(getApplicationContext(), packageName + ".zapic", imageFile);
 
                 final Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
 
@@ -696,7 +696,7 @@ public final class ZapicActivity extends Activity {
             intents.remove(intents.size() - 1);
             Intent chooserIntent = Intent.createChooser(targetIntent, "Photo");
             chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, intents.toArray(new Parcelable[intents.size()]));
-            this.startActivityForResult(chooserIntent, IMAGE_REQUEST);
+            startActivityForResult(chooserIntent, IMAGE_REQUEST);
         } else {
             Toast.makeText(this, "A photo app could not be found", Toast.LENGTH_SHORT)
                     .show();
