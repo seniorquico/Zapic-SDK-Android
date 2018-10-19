@@ -26,12 +26,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application>
-        <activity
-            android:name=".ZapicActivity"
-            android:configChanges="orientation|screenSize"
-            android:hardwareAccelerated="true"
-            android:launchMode="singleTask"
-            android:theme="@style/Zapic.Theme.Translucent" />
+        <!--<activity-->
+            <!--android:name=".ZapicActivity"-->
+            <!--android:configChanges="orientation|screenSize"-->
+            <!--android:hardwareAccelerated="true"-->
+            <!--android:launchMode="singleTask"-->
+            <!--android:theme="@style/Zapic.Theme.Translucent" />-->
 
         <meta-data
             android:name="android.webkit.WebView.EnableSafeBrowsing"
@@ -41,7 +41,7 @@
             android:value="true" />
 
         <provider
-            android:name="android.support.v4.content.FileProvider"
+            android:name=".ZapicFileProvider"
             android:authorities="${applicationId}.zapic"
             android:exported="false"
             android:grantUriPermissions="true">

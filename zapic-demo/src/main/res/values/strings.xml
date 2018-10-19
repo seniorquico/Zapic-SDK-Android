@@ -1,6 +1,10 @@
 <resources>
     <string name="app_name">Zapic Android Demo</string>
     <string name="challenges_button">Challenges</string>
+    <string name="competition_button_join">Join the Competition!</string>
+    <string name="competition_button_loading">Loading…</string>
+    <string name="competition_button_network_error">Network Error</string>
+    <string name="competition_button_view">View the Competition</string>
     <string name="zapic_button">Zapic</string>
 
     <string name="play_games_app_id">853726039702</string>

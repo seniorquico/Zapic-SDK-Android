@@ -1,70 +1,27 @@
 package com.zapic.sdk.android;
 
 import android.app.Activity;
-import android.app.ActivityOptions;
 import android.app.Application;
 import android.content.Context;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Looper;
 import android.support.annotation.AnyThread;
 import android.support.annotation.CheckResult;
-import android.support.annotation.MainThread;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
-import android.util.Log;
-import android.webkit.WebView;
-
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.util.Collections;
 import java.util.Iterator;
+import java.util.concurrent.Future;
 
-/**
- * Provides static methods to manage and interact with Zapic.
- * <p>
- * It is the responsibility of the game's {@link Application} to call the {@link #start(Context)}
- * method during its {@code onCreate} lifecycle method. The game may optionally register an
- * authentication handler that is notified when a player is logged in or out.
- * <p>
- * It is the responsibility of the game's activity (or game's activities if there are multiple) to
- * call the {@link #attachFragment(Activity)} method during its {@code onCreate} lifecycle method.
- * This method creates and attaches a non-UI fragment, {@link ZapicFrameworkFragment} or
- * {@link ZapicSupportFragment} (depending on the game's activity type), to the activity. The non-UI
- * fragment downloads and runs the Zapic web page in the background. If a game's activity does
- * <i>not</i> call {@link #attachFragment(Activity)}, the Zapic web page may be garbage collected
- * and the current player's session reset. It is also the responsibility of the game's activity to
- * call the {@link #showDefaultPage(Activity)} method after the player interacts with a
- * Zapic-branded button visible from the game's main menu (requirements are outlined in the
- * <a href="https://www.zapic.com/terms/">Terms of Use</a>). The game may optionally call the
- * {@link #showPage(Activity, String)} method to deep link to Zapic features or content. The
- * supported page constants are available in {@link ZapicPages}.
- * <p>
- * The Zapic web page runs in a {@link WebView}. Generally, the {@link WebView} runs for the
- * lifetime of the Android application. While the game is in focus, the {@link WebView} runs in the
- * background (managed by one or more non-UI fragments attached to the game's activities). The Zapic
- * web page processes events and receives notifications while running in the background. When the
- * player shifts focus to Zapic, the {@link WebView} moves to the foreground and is presented by a
- * {@link ZapicActivity}. When the player shifts focus back to the game, the {@link ZapicActivity}
- * finishes and the {@link WebView} returns to the background (again managed by one or more non-UI
- * fragments attached to the game's activities).
- *
- * @author Kyle Dodson
- * @since 1.0.0
- */
 public final class Zapic {
     /**
      * The name of the OneSignal push notification tag.
-     */
-    @SuppressWarnings("unused")
-    public static final String NOTIFICATION_TAG = "zapic_player_token";
-
-    /**
-     * A synchronization lock for {@code sInstance} writes.
+     *
+     * @since 1.2.1
      */
     @NonNull
-    private static final Object INSTANCE_LOCK = new Object();
+    public static final String NOTIFICATION_TAG = "zapic_player_token";
 
     /**
      * The tag used to identify log messages.
@@ -73,116 +30,103 @@ public final class Zapic {
     private static final String TAG = "Zapic";
 
     /**
-     * The {@link Zapic} instance.
+     * A synchronization lock for the static field {@link #bridge}.
+     */
+    @NonNull
+    private static final Object bridgeLock = new Object();
+
+    /**
+     * The JavaScript bridge.
      */
     @Nullable
-    private static volatile Zapic sInstance = null;
+    private static JavaScriptBridge bridge;
 
     /**
-     * The {@link SessionManager} instance.
+     * Prevents creating a new {@link Zapic} instance.
      */
-    @NonNull
-    private final SessionManager mSessionManager;
-
-    /**
-     * The {@link ViewManager} instance.
-     */
-    @NonNull
-    private final ViewManager mViewManager;
-
-    /**
-     * The {@link WebViewManager} instance.
-     */
-    @NonNull
-    private final WebViewManager mWebViewManager;
-
-    /**
-     * Creates a new {@link Zapic} instance.
-     * <p>
-     * <b>This constructor must be invoked on the UI thread.</b>
-     *
-     * @param context Any context object (e.g. the global {@link Application} or an
-     *                {@link Activity}).
-     */
-    @MainThread
-    private Zapic(@NonNull final Context context) {
-        mSessionManager = new SessionManager(context);
-        mViewManager = new ViewManager();
-        mWebViewManager = new WebViewManager(context, mSessionManager, mViewManager);
+    private Zapic() {
     }
 
     /**
-     * Attaches a special fragment to the specified activity that relays intents and notification
-     * messages.
+     * Attaches a special fragment to the specified activity that relays intents and notification messages.
      * <p>
      * This must be invoked to relay intents and notification messages. It should be invoked in all
      * {@link Activity#onCreate(Bundle)} lifecycle event callbacks.
      * <p>
-     * <b>This method must be invoked on the UI thread.</b>
+     * This method may be invoked on any thread.
      *
      * @param activity The activity.
-     * @throws IllegalArgumentException    If {@code activity} is {@code null}.
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
+     * @throws IllegalArgumentException If {@code activity} is {@code null}.
      */
-    @MainThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void attachFragment(@Nullable final Activity activity) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "attachFragment");
-        }
-
-        if (activity == null) {
-            throw new IllegalArgumentException("activity must not be null");
-        }
-
-        ensureUIThread();
-
-        Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            start(activity);
-
-            instance = Zapic.sInstance;
-            assert instance != null : "instance is null";
-        }
-
-        instance.mViewManager.attachFragment(activity);
+    @AnyThread
+    public static void attachFragment(@NonNull final Activity activity) {
+        ZapicLog.v(Zapic.TAG, "attachFragment");
     }
 
     /**
-     * Detaches a special fragment from the specified activity that relays intents and notification
-     * messages.
+     * Detaches a special fragment from the specified activity that relays intents and notification messages.
      * <p>
-     * This generally should not be invoked. The fragments are automatically detached and destroyed
-     * when the activity is destroyed.
+     * This generally should not be invoked. The fragments are automatically detached and destroyed when the activity is
+     * destroyed.
      * <p>
-     * <b>This method must be invoked on the UI thread.</b>
+     * This method may be invoked on any thread.
      *
      * @param activity The activity.
-     * @throws IllegalArgumentException    If {@code activity} is {@code null}.
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
+     * @throws IllegalArgumentException If {@code activity} is {@code null}.
      */
-    @MainThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void detachFragment(@Nullable final Activity activity) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "detachFragment");
+    @AnyThread
+    public static void detachFragment(@NonNull final Activity activity) {
+        ZapicLog.v(Zapic.TAG, "detachFragment");
+    }
+
+    /**
+     * Asynchronously gets the list of challenges for the player.
+     * <p>
+     * This method may be invoked on any thread. The result callback will be invoked on the application's main thread
+     * when the asynchronous operation has completed.
+     *
+     * @param callback The result callback.
+     * @return A future that represents the asynchronous operation. The future may be used to check the status of or
+     * cancel the asynchronous operation.
+     * @throws IllegalArgumentException If {@code callback} is {@code null}.
+     * @since 1.3.0
+     */
+    @AnyThread
+    @NonNull
+    public static Future<?> getChallenges(@NonNull final ZapicQueryCallback<ZapicChallenge[]> callback) {
+        ZapicLog.v(Zapic.TAG, "getChallenges");
+
+        //noinspection ConstantConditions
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
         }
 
-        if (activity == null) {
-            throw new IllegalArgumentException("activity must not be null");
+        return Zapic.getBridge().getChallenges(callback);
+    }
+
+    /**
+     * Asynchronously gets the list of competitions for the player.
+     * <p>
+     * This method may be invoked on any thread. The result callback will be invoked on the application's main thread
+     * when the asynchronous operation has completed.
+     *
+     * @param callback The result callback.
+     * @return A future that represents the asynchronous operation. The future may be used to check the status of or
+     * cancel the asynchronous operation.
+     * @throws IllegalArgumentException If {@code callback} is {@code null}.
+     * @since 1.3.0
+     */
+    @AnyThread
+    @NonNull
+    public static Future<?> getCompetitions(@NonNull final ZapicQueryCallback<ZapicCompetition[]> callback) {
+        ZapicLog.v(Zapic.TAG, "getCompetitions");
+
+        //noinspection ConstantConditions
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
         }
 
-        ensureUIThread();
-
-        Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            start(activity);
-
-            instance = Zapic.sInstance;
-            assert instance != null : "instance is null";
-        }
-
-        instance.mViewManager.detachFragment(activity);
+        return Zapic.getBridge().getCompetitions(callback);
     }
 
     /**
@@ -191,210 +135,142 @@ public final class Zapic {
      * This method may be invoked on any thread.
      *
      * @return The current player or {@code null} if the current player has not logged in.
-     * @throws IllegalStateException If {@link #start(Context)} has not been invoked.
+     * @since 1.2.0
+     * @deprecated This method has been replaced with {@link #getPlayer(ZapicQueryCallback)}.
      */
     @AnyThread
     @CheckResult
+    @Deprecated
     @Nullable
-    @SuppressWarnings({"unused", "WeakerAccess"})
     public static ZapicPlayer getCurrentPlayer() {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "getCurrentPlayer");
-        }
+        ZapicLog.v(Zapic.TAG, "getCurrentPlayer");
 
-        final Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            throw new IllegalStateException("Zapic has not been started");
-        }
-
-        return instance.mSessionManager.getCurrentPlayer();
+        return Zapic.getBridge().getCachedPlayer();
     }
 
     /**
-     * Handles an interaction event. Depending on the event parameters, Zapic may open and show
-     * contextual information related to the specific interaction.
+     * Asynchronously gets the player.
+     * <p>
+     * This method may be invoked on any thread. The result callback will be invoked on the application's main thread
+     * when the asynchronous operation has completed.
+     *
+     * @param callback The result callback.
+     * @return A future that represents the asynchronous operation. The future may be used to check the status of or
+     * cancel the asynchronous operation.
+     * @throws IllegalArgumentException If {@code callback} is {@code null}.
+     * @since 1.3.0
+     */
+    @AnyThread
+    @NonNull
+    public static Future<?> getPlayer(@NonNull final ZapicQueryCallback<ZapicPlayer> callback) {
+        ZapicLog.v(Zapic.TAG, "getPlayer");
+
+        //noinspection ConstantConditions
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
+        }
+
+        return Zapic.getBridge().getPlayer(callback);
+    }
+
+    /**
+     * Asynchronously gets the list of statistics for the player.
+     * <p>
+     * This method may be invoked on any thread. The result callback will be invoked on the application's main thread
+     * when the asynchronous operation has completed.
+     *
+     * @param callback The result callback.
+     * @return A future that represents the asynchronous operation. The future may be used to check the status of or
+     * cancel the asynchronous operation.
+     * @throws IllegalArgumentException If {@code callback} is {@code null}.
+     * @since 1.3.0
+     */
+    @AnyThread
+    @NonNull
+    public static Future<?> getStatistics(@NonNull final ZapicQueryCallback<ZapicStatistic[]> callback) {
+        ZapicLog.v(Zapic.TAG, "getStatistics");
+
+        //noinspection ConstantConditions
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
+        }
+
+        return Zapic.getBridge().getStatistics(callback);
+    }
+
+    /**
+     * Handles an interaction event. Depending on the event parameters, Zapic may open and show contextual information.
      * <p>
      * This method may be invoked on any thread.
      *
      * @param parameters The event parameters.
-     * @throws IllegalArgumentException If {@code parameters} is {@code null} or contains a value
-     *                                  that is not a boolean, number, or string.
-     * @throws IllegalStateException    If {@link #start(Context)} has not been invoked.
+     * @throws IllegalArgumentException If {@code parameters} is {@code null} or contains a value that is not a boolean,
+     *                                  number, or string.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void handleInteraction(@Nullable final JSONObject parameters) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "handleInteractionEvent");
-        }
+    public static void handleInteraction(@NonNull final JSONObject parameters) {
+        ZapicLog.v(Zapic.TAG, "handleInteraction");
 
+        //noinspection ConstantConditions
         if (parameters == null) {
             throw new IllegalArgumentException("parameters must not be null");
         }
 
         try {
             final JSONObject parsedParameters = new JSONObject(parameters.toString());
-            if (parsedParameters.has("zapic") && !parsedParameters.isNull("zapic")) {
-                handleEvent("interaction", parsedParameters);
-            }
+            Zapic.handleEvent("interaction", parsedParameters);
         } catch (JSONException e) {
             throw new IllegalArgumentException("parameters must be a valid JSON object");
         }
     }
 
     /**
-     * Handles an interaction event. Depending on the event parameters, Zapic may open and show
-     * contextual information related to the specific interaction.
+     * Handles an interaction event. Depending on the event parameters, Zapic may open and show contextual information.
      * <p>
      * This method may be invoked on any thread.
      *
      * @param parameters The event parameters.
-     * @throws IllegalArgumentException If {@code parameters} is {@code null}, not a valid JSON
-     *                                  object, or contains a value that is not a boolean, number,
-     *                                  or string.
-     * @throws IllegalStateException    If {@link #start(Context)} has not been invoked.
+     * @throws IllegalArgumentException If {@code parameters} is {@code null}, not a valid JSON object, or contains a
+     *                                  value that is not a boolean, number, or string.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void handleInteraction(@Nullable final String parameters) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "handleInteractionEvent");
-        }
+    public static void handleInteraction(@NonNull final String parameters) {
+        ZapicLog.v(Zapic.TAG, "handleInteraction");
 
+        //noinspection ConstantConditions
         if (parameters == null) {
             throw new IllegalArgumentException("parameters must not be null");
         }
 
         try {
             final JSONObject parsedParameters = new JSONObject(parameters);
-            if (parsedParameters.has("zapic") && !parsedParameters.isNull("zapic")) {
-                handleEvent("interaction", parsedParameters);
-            }
+            Zapic.handleEvent("interaction", parsedParameters);
         } catch (JSONException e) {
             throw new IllegalArgumentException("parameters must be a valid JSON object");
         }
     }
 
     /**
-     * Gets the {@link SessionManager}, {@link ViewManager}, and {@link WebViewManager} instances.
+     * Sets the authentication handler that is notified after a player has logged in or logged out.
      * <p>
-     * <b>This method must be invoked on the UI thread.</b>
+     * The authentication handler will be immediately invoked with a {@link ZapicPlayer} instance if the current player
+     * has already logged in.
+     * <p>
+     * This method may be invoked on any thread. The authentication handler will be invoked on the application's main
+     * thread after a player has logged in or logged out.
      *
-     * @param context Any context object (e.g. the global {@link Application} or an
-     *                {@link Activity}).
-     * @return The {@link SessionManager}, {@link ViewManager}, and {@link WebViewManager}
-     *         instances.
-     * @throws IllegalArgumentException    If {@code context} is {@code null}.
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
+     * @param authenticationHandler The authentication handler that is notified after a player has logged in or logged
+     *                              out. This may be {@code null} to unsubscribe a previous authentication handler.
+     * @since 1.2.0
      */
-    @MainThread
-    @NonNull
-    static Managers onAttachedFragment(@Nullable final Context context) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "onAttachedFragment");
-        }
+    @AnyThread
+    public static void setPlayerAuthenticationHandler(
+            @Nullable final ZapicPlayerAuthenticationHandler authenticationHandler) {
+        ZapicLog.v(Zapic.TAG, "setPlayerAuthenticationHandler");
 
-        if (context == null) {
-            throw new IllegalArgumentException("context must not be null");
-        }
-
-        ensureUIThread();
-
-        Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            start(context);
-
-            instance = Zapic.sInstance;
-            assert instance != null : "instance is null";
-        }
-
-        return new Managers(instance.mSessionManager, instance.mViewManager, instance.mWebViewManager);
-    }
-
-    /**
-     * Sets the authentication handler that is notified after a player has logged in or out.
-     * <p>
-     * If the current player has already logged in, the
-     * {@link ZapicPlayerAuthenticationHandler#onLogin(ZapicPlayer)} method will be immediately
-     * invoked with a {@link ZapicPlayer} instance that represents the current user.
-     * <p>
-     * <b>This method must be invoked on the UI thread.</b>
-     *
-     * @param authenticationHandler The authentication handler that is notified after a player has
-     *                              logged in or out. This may be {@code null} to unsubscribe a
-     *                              previous authentication handler.
-     * @throws IllegalStateException       If {@link #start(Context)} has not been invoked.
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
-     */
-    @MainThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void setPlayerAuthenticationHandler(@Nullable final ZapicPlayerAuthenticationHandler authenticationHandler) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "setPlayerAuthenticationHandler");
-        }
-
-        final Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            throw new IllegalStateException("Zapic has not been started");
-        }
-
-        ensureUIThread();
-
-        instance.mSessionManager.setPlayerAuthenticationHandler(authenticationHandler);
-    }
-
-    /**
-     * Starts Zapic.
-     * <p>
-     * This must be invoked once to start Zapic. It should be invoked in the
-     * {@link Application#onCreate()} lifecycle event callback. Most {@link Zapic} methods will
-     * throw an {@link IllegalStateException} if invoked prior to {@code start}. This method is
-     * idempotent and may be invoked multiple times (for example, in all
-     * {@link Activity#onCreate(Bundle)} lifecycle event callbacks if it cannot be invoked in the
-     * {@link Application#onCreate()} lifecycle event callback).
-     * <p>
-     * <b>This method must be invoked on the UI thread.</b>
-     *
-     * @param context Any context object (e.g. the global {@link Application} or an
-     *                {@link Activity}).
-     * @throws IllegalArgumentException    If {@code context} is {@code null}.
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
-     */
-    @MainThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void start(@Nullable final Context context) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "start");
-        }
-
-        if (context == null) {
-            throw new IllegalArgumentException("context must not be null");
-        }
-
-        ensureUIThread();
-
-        if (sInstance == null) {
-            synchronized (INSTANCE_LOCK) {
-                if (BuildConfig.DEBUG) {
-                    // This enables WebView debugging for all WebViews in the current process. Changes
-                    // to this value are accepted only before the WebView process is created.
-                    WebView.setWebContentsDebuggingEnabled(true);
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    // This marks "zapic.net" as a safe domain for all WebViews in the current process.
-                    // Changes to this value are accepted only before the WebView process is created.
-                    WebView.setSafeBrowsingWhitelist(Collections.singletonList("zapic.net"), null);
-                }
-
-                if (sInstance == null) {
-                    Log.i(TAG, String.format("Starting Zapic %s (%s)", BuildConfig.VERSION_NAME, BuildConfig.BUILD_TYPE));
-                    final Zapic zapic = new Zapic(context);
-                    sInstance = zapic;
-                    zapic.mWebViewManager.start();
-                }
-            }
-        }
+        Zapic.getBridge().setPlayerAuthenticationHandler(authenticationHandler);
     }
 
     /**
@@ -402,13 +278,25 @@ public final class Zapic {
      * <p>
      * This method may be invoked on any thread.
      *
-     * @param activity The {@link Activity} object.
+     * @param activity The {@link Activity} over which Zapic will be shown.
      * @throws IllegalArgumentException If {@code activity} is {@code null}.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void showDefaultPage(@Nullable final Activity activity) {
-        showPage(activity, "default");
+    public static void showDefaultPage(@NonNull final Activity activity) {
+        ZapicLog.v(Zapic.TAG, "showDefaultPage");
+
+        //noinspection ConstantConditions
+        if (activity == null) {
+            throw new IllegalArgumentException("activity must not be null");
+        }
+
+        // TODO: Start activity.
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+//            activity.startActivity(ZapicActivity.createIntent(activity, "default"), ActivityOptions.makeSceneTransitionAnimation(activity).toBundle());
+//        } else {
+//            activity.startActivity(ZapicActivity.createIntent(activity, "default"));
+//        }
     }
 
     /**
@@ -416,22 +304,62 @@ public final class Zapic {
      * <p>
      * This method may be invoked on any thread.
      *
-     * @param activity The {@link Activity} object.
+     * @param activity The {@link Activity} over which Zapic will be shown.
      * @param page     The page to show.
-     * @throws IllegalArgumentException If {@code activity} is {@code null}.
+     * @throws IllegalArgumentException If {@code activity} or {@code page} are {@code null}.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void showPage(@Nullable final Activity activity, @Nullable final String page) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "showPage");
+    public static void showPage(@NonNull final Activity activity, @NonNull @ZapicPageDef final String page) {
+        ZapicLog.v(Zapic.TAG, "showPage");
+
+        //noinspection ConstantConditions
+        if (activity == null) {
+            throw new IllegalArgumentException("activity must not be null");
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            activity.startActivity(ZapicActivity.createIntent(activity, page), ActivityOptions.makeSceneTransitionAnimation(activity).toBundle());
-        } else {
-            activity.startActivity(ZapicActivity.createIntent(activity, page));
+        //noinspection ConstantConditions
+        if (page == null) {
+            throw new IllegalArgumentException("page must not be null");
         }
+
+        // TODO: Start activity.
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+//            activity.startActivity(ZapicActivity.createIntent(activity, page), ActivityOptions.makeSceneTransitionAnimation(activity).toBundle());
+//        } else {
+//            activity.startActivity(ZapicActivity.createIntent(activity, page));
+//        }
+    }
+
+    /**
+     * Starts Zapic.
+     * <p>
+     * This must be invoked once to start Zapic. It should be invoked in the {@link Application#onCreate()} lifecycle
+     * event callback. Alternatively, it may be invoked in the first {@link Activity#onCreate} lifecycle event callback.
+     * There is no effect if invoked multiple times.
+     * <p>
+     * This method may be invoked on any thread.
+     *
+     * @param context Any context object (e.g. the global {@link Application} or an {@link Activity}).
+     * @throws IllegalArgumentException If {@code context} is {@code null}.
+     * @since 1.2.0
+     */
+    @AnyThread
+    public static void start(@NonNull final Context context) {
+        ZapicLog.v(Zapic.TAG, "start");
+
+        //noinspection ConstantConditions
+        if (context == null) {
+            throw new IllegalArgumentException("context must not be null");
+        }
+
+        try {
+            Application application = (Application) context;
+            application.registerActivityLifecycleCallbacks(new ActivityLifecycleListener());
+        } catch (ClassCastException ignored) {
+        }
+
+        final JavaScriptBridge bridge = Zapic.getBridge();
     }
 
     /**
@@ -440,24 +368,22 @@ public final class Zapic {
      * This method may be invoked on any thread.
      *
      * @param parameters The event parameters.
-     * @throws IllegalArgumentException If {@code parameters} is {@code null} or contains a value
-     *                                  that is not a boolean, number, or string.
-     * @throws IllegalStateException    If {@link #start(Context)} has not been invoked.
+     * @throws IllegalArgumentException If {@code parameters} is {@code null} or contains a value that is not a boolean,
+     *                                  number, or string.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void submitEvent(@Nullable final JSONObject parameters) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "handleGameplayEvent");
-        }
+    public static void submitEvent(@NonNull final JSONObject parameters) {
+        ZapicLog.v(Zapic.TAG, "submitEvent");
 
+        //noinspection ConstantConditions
         if (parameters == null) {
             throw new IllegalArgumentException("parameters must not be null");
         }
 
         try {
             final JSONObject parsedParameters = new JSONObject(parameters.toString());
-            handleEvent("gameplay", parsedParameters);
+            Zapic.handleEvent("gameplay", parsedParameters);
         } catch (JSONException e) {
             throw new IllegalArgumentException("parameters must be a valid JSON object");
         }
@@ -468,42 +394,67 @@ public final class Zapic {
      * <p>
      * This method may be invoked on any thread.
      *
-     * @param parameters The event parameters.
-     * @throws IllegalArgumentException If {@code parameters} is {@code null}, not a valid JSON
-     *                                  object, or contains a value that is not a boolean, number,
-     *                                  or string.
-     * @throws IllegalStateException    If {@link #start(Context)} has not been invoked.
+     * @param parameters The event parameters as a JSON-encoded string.
+     * @throws IllegalArgumentException If {@code parameters} is {@code null}, not a valid JSON object, or contains a
+     *                                  value that is not a boolean, number, or string.
+     * @since 1.2.0
      */
     @AnyThread
-    @SuppressWarnings({"unused", "WeakerAccess"})
-    public static void submitEvent(@Nullable final String parameters) {
-        if (BuildConfig.DEBUG) {
-            Log.d(TAG, "handleGameplayEvent");
-        }
+    public static void submitEvent(@NonNull final String parameters) {
+        ZapicLog.v(Zapic.TAG, "submitEvent");
 
+        //noinspection ConstantConditions
         if (parameters == null) {
             throw new IllegalArgumentException("parameters must not be null");
         }
 
         try {
             final JSONObject parsedParameters = new JSONObject(parameters);
-            handleEvent("gameplay", parsedParameters);
+            Zapic.handleEvent("gameplay", parsedParameters);
         } catch (JSONException e) {
             throw new IllegalArgumentException("parameters must be a valid JSON object");
         }
     }
 
     /**
-     * Handles a gameplay or interaction event by relaying it to the {@link WebView}.
+     * Gets the JavaScript bridge.
+     * <p>
+     * This method may be invoked on any thread.
+     *
+     * @return The JavaScript bridge.
+     */
+    @AnyThread
+    @CheckResult
+    @NonNull
+    static JavaScriptBridge getBridge() {
+        JavaScriptBridge bridge = Zapic.bridge;
+        if (bridge == null) {
+            synchronized (Zapic.bridgeLock) {
+                bridge = Zapic.bridge;
+                if (bridge == null) {
+                    // TODO: Connect bridge to WebView.
+                    bridge = new JavaScriptBridge(new JavaScriptBridge.Dispatcher() {
+                        @Override
+                        public void dispatch(@NonNull final String action) {
+                            ZapicLog.i(Zapic.TAG, "Dispatching: %s", action);
+                        }
+                    });
+                }
+            }
+        }
+
+        return bridge;
+    }
+
+    /**
+     * Handles a gameplay or interaction event.
      * <p>
      * This method may be invoked on any thread.
      *
      * @param type       The event type.
      * @param parameters The event parameters.
-     * @throws IllegalArgumentException If {@code type} if not "gameplay" or "interaction", or if
-     *                                  {@code parameters} contains a value that is not a boolean,
-     *                                  number, or string.
-     * @throws IllegalStateException    If {@link #start(Context)} has not been invoked.
+     * @throws IllegalArgumentException If {@code type} is not "gameplay" or "interaction" or if {@code parameters}
+     *                                  contains a value that is not a boolean, number, or string.
      */
     @AnyThread
     private static void handleEvent(@NonNull final String type, @NonNull final JSONObject parameters) {
@@ -521,40 +472,19 @@ public final class Zapic {
                 value = null;
             }
 
-            if (!(value instanceof Integer || value instanceof Long || value instanceof Float || value instanceof Double || value instanceof Boolean || value instanceof String)) {
-                throw new IllegalArgumentException(String.format("parameters may only contain boolean, numeric, and string values (check \"%s\")", key));
+            if (!(value instanceof Integer || value instanceof Long || value instanceof Float ||
+                    value instanceof Double || value instanceof Boolean || value instanceof String)) {
+                throw new IllegalArgumentException(
+                        String.format("parameter \"%s\" does not have a boolean, number, or string value", key));
             }
-        }
-
-        final Zapic instance = Zapic.sInstance;
-        if (instance == null) {
-            throw new IllegalStateException("Zapic has not been started");
         }
 
         try {
-            instance.mSessionManager.handleEvent(
-                    new JSONObject()
-                            .put("type", type)
-                            .put("params", parameters));
+            final JSONObject event = new JSONObject()
+                    .put("type", type)
+                    .put("params", parameters);
+            Zapic.getBridge().handleEvent(event);
         } catch (JSONException ignored) {
-        }
-    }
-
-    /**
-     * Ensures the UI thread is the current thread.
-     *
-     * @throws IllegalThreadStateException If not invoked on the UI thread.
-     */
-    @AnyThread
-    private static void ensureUIThread() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Looper.getMainLooper().isCurrentThread()) {
-                throw new IllegalThreadStateException("start must be invoked on the UI thread");
-            }
-        } else {
-            if (Looper.getMainLooper().getThread() != Thread.currentThread()) {
-                throw new IllegalThreadStateException("start must be invoked on the UI thread");
-            }
         }
     }
 }

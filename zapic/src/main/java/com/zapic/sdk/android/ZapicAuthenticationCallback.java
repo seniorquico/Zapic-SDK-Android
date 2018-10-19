@@ -7,10 +7,9 @@ import android.support.annotation.NonNull;
  * Represents a callback used to notify when the player has logged in or logged out.
  *
  * @author Kyle Dodson
- * @since 1.2.0
- * @deprecated Replaced with {@link ZapicAuthenticationCallback}.
+ * @since 1.3.0
  */
-public interface ZapicPlayerAuthenticationHandler {
+public interface ZapicAuthenticationCallback {
     /**
      * Called when the player has logged in.
      * <p>
@@ -18,7 +17,7 @@ public interface ZapicPlayerAuthenticationHandler {
      * this notification to load player-specific data.
      *
      * @param player The current player.
-     * @since 1.2.0
+     * @since 1.3.0
      */
     @MainThread
     void onLogin(@NonNull ZapicPlayer player);
@@ -30,7 +29,7 @@ public interface ZapicPlayerAuthenticationHandler {
      * this notification to unload player-specific data.
      *
      * @param player The previous player.
-     * @since 1.2.0
+     * @since 1.3.0
      */
     @MainThread
     void onLogout(@NonNull ZapicPlayer player);

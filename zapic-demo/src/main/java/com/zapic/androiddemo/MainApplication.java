@@ -42,7 +42,7 @@ public class MainApplication extends BranchApp {
             @Override
             public void onLogin(@NonNull ZapicPlayer player) {
                 // Associate player with Branch session.
-                branch.setIdentity(player.getPlayerId());
+                branch.setIdentity(player.getId());
 
                 // Associate player/device with OneSignal for push notifications.
                 OneSignal.sendTag("zapic_player_token", player.getNotificationToken());

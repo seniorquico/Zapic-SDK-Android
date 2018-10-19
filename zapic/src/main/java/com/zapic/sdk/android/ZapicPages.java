@@ -1,51 +1,50 @@
 package com.zapic.sdk.android;
 
-import android.app.Activity;
 import android.support.annotation.NonNull;
 
 /**
- * Provides constant values that identify the different pages that may be shown using
- * {@link Zapic#showPage(Activity, String)}.
+ * Provides constant values that identify different pages that may be shown using {@code Zapic.showPage}.
  *
  * @author Kyle Dodson
  * @since 1.2.0
+ * @deprecated Replaced with {@link ZapicPage}.
  */
-@SuppressWarnings({"unused", "WeakerAccess"})
 public final class ZapicPages {
     /**
-     * Identifies a page that shows the list of challenges for the current game.
+     * Identifies a page that shows the list of challenges.
+     *
+     * @since 1.2.0
      */
     @NonNull
-    public static final String CHALLENGE_LIST = "Challenges";
+    public static final String CHALLENGE_LIST = ZapicPage.CHALLENGE_LIST;
 
     /**
-     * Identifies a page that shows the list of competitions for the current game.
+     * Identifies a page that shows a form to create a new challenge.
+     *
+     * @since 1.2.0
      */
     @NonNull
-    public static final String COMPETITION_LIST = "Competitions";
+    public static final String CREATE_CHALLENGE = ZapicPage.CREATE_CHALLENGE;
 
     /**
-     * Identifies a page that shows the create a new challenge form for the current game.
+     * Identifies a page that shows the profile.
+     *
+     * @since 1.2.0
      */
     @NonNull
-    public static final String CREATE_CHALLENGE = "CreateChallenge";
+    public static final String PROFILE = ZapicPage.PROFILE;
 
     /**
-     * Identifies a page that shows the login form for the current player.
+     * Identifies a page that shows the list of statistics.
+     *
+     * @since 1.2.0
      */
     @NonNull
-    public static final String LOGIN = "Login";
+    public static final String STAT_LIST = ZapicPage.STAT_LIST;
 
     /**
-     * Identifies a page that shows the profile for the current player.
+     * Prevents creating a new {@link ZapicPages} instance.
      */
-    @NonNull
-    public static final String PROFILE = "Profile";
-
-    /**
-     * Identifies a page that shows the list of statistics for the current player in the current
-     * game.
-     */
-    @NonNull
-    public static final String STAT_LIST = "Stats";
+    private ZapicPages() {
+    }
 }
