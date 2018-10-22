@@ -433,12 +433,7 @@ public final class Zapic {
                 bridge = Zapic.bridge;
                 if (bridge == null) {
                     // TODO: Connect bridge to WebView.
-                    bridge = new JavaScriptBridge(new JavaScriptBridge.Dispatcher() {
-                        @Override
-                        public void dispatch(@NonNull final String action) {
-                            ZapicLog.i(Zapic.TAG, "Dispatching: %s", action);
-                        }
-                    });
+                    bridge = new JavaScriptBridge();
                 }
             }
         }

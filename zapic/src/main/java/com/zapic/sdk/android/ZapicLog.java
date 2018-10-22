@@ -1,9 +1,13 @@
 package com.zapic.sdk.android;
 
 import android.support.annotation.AnyThread;
+import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.util.Log;
+
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 
 /**
  * Configures Zapic SDK logging.
@@ -46,7 +50,7 @@ public final class ZapicLog {
     /**
      * The current log level.
      */
-    @ZapicLogLevelDef
+    @ZapicLog.LevelDef
     private static int logLevel = Log.ERROR;
 
     /**
@@ -61,7 +65,7 @@ public final class ZapicLog {
      * @return The current log level.
      */
     @AnyThread
-    @ZapicLogLevelDef
+    @ZapicLog.LevelDef
     static int getLogLevel() {
         return ZapicLog.logLevel;
     }
@@ -75,7 +79,7 @@ public final class ZapicLog {
      * @since 1.3.0
      */
     @AnyThread
-    public static void setLogLevel(@ZapicLogLevelDef final int logLevel) {
+    public static void setLogLevel(@ZapicLog.LevelDef final int logLevel) {
         if (logLevel < Log.VERBOSE || logLevel > Log.ERROR) {
             throw new IllegalArgumentException(
                     "logLevel must be greater than or equal to android.util.Log.VERBOSE and less than or equal to " +
@@ -407,5 +411,14 @@ public final class ZapicLog {
         if (ZapicLog.logLevel <= Log.WARN) {
             Log.w(tag, String.format(message, args), t);
         }
+    }
+
+    /**
+     * @author Kyle Dodson
+     * @since 1.3.0
+     */
+    @IntDef({Log.VERBOSE, Log.DEBUG, Log.INFO, Log.WARN, Log.ERROR})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface LevelDef {
     }
 }

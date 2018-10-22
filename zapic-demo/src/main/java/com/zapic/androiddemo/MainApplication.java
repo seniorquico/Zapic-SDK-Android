@@ -19,43 +19,43 @@ public class MainApplication extends BranchApp {
         super.onCreate();
 
         // Initialize Branch.
-        final Branch branch = Branch.getAutoInstance(this);
+//        final Branch branch = Branch.getAutoInstance(this);
 
         // Initialize OneSignal.
-        OneSignal.startInit(this)
-                .inFocusDisplaying(OneSignal.OSInFocusDisplayOption.Notification)
-                .unsubscribeWhenNotificationsAreDisabled(true)
-                .setNotificationOpenedHandler(new OneSignal.NotificationOpenedHandler() {
-                    @Override
-                    public void notificationOpened(OSNotificationOpenResult result) {
-                        JSONObject data = result.notification.payload.additionalData;
-                        if (data != null) {
-                            Zapic.handleInteraction(data);
-                        }
-                    }
-                })
-                .init();
+//        OneSignal.startInit(this)
+//                .inFocusDisplaying(OneSignal.OSInFocusDisplayOption.Notification)
+//                .unsubscribeWhenNotificationsAreDisabled(true)
+//                .setNotificationOpenedHandler(new OneSignal.NotificationOpenedHandler() {
+//                    @Override
+//                    public void notificationOpened(OSNotificationOpenResult result) {
+//                        JSONObject data = result.notification.payload.additionalData;
+//                        if (data != null) {
+//                            Zapic.handleInteraction(data);
+//                        }
+//                    }
+//                })
+//                .init();
 
         // Initialize Zapic.
         Zapic.start(this);
-        Zapic.setPlayerAuthenticationHandler(new ZapicPlayerAuthenticationHandler() {
-            @Override
-            public void onLogin(@NonNull ZapicPlayer player) {
-                // Associate player with Branch session.
-                branch.setIdentity(player.getId());
-
-                // Associate player/device with OneSignal for push notifications.
-                OneSignal.sendTag("zapic_player_token", player.getNotificationToken());
-            }
-
-            @Override
-            public void onLogout(@NonNull ZapicPlayer player) {
-                // Disassociate player from Branch session.
-                branch.logout();
-
-                // Disassociate player/device from OneSignal for push notifications.
-                OneSignal.deleteTag("zapic_player_token");
-            }
-        });
+//        Zapic.setPlayerAuthenticationHandler(new ZapicPlayerAuthenticationHandler() {
+//            @Override
+//            public void onLogin(@NonNull ZapicPlayer player) {
+//                // Associate player with Branch session.
+//                branch.setIdentity(player.getId());
+//
+//                // Associate player/device with OneSignal for push notifications.
+//                OneSignal.sendTag("zapic_player_token", player.getNotificationToken());
+//            }
+//
+//            @Override
+//            public void onLogout(@NonNull ZapicPlayer player) {
+//                // Disassociate player from Branch session.
+//                branch.logout();
+//
+//                // Disassociate player/device from OneSignal for push notifications.
+//                OneSignal.deleteTag("zapic_player_token");
+//            }
+//        });
     }
 }

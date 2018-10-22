@@ -4,7 +4,7 @@ import android.support.annotation.MainThread;
 import android.support.annotation.NonNull;
 
 /**
- * Represents a callback used to notify when the player has logged in or logged out.
+ * Represents a callback used to notify the application when the player has logged in or logged out.
  *
  * @author Kyle Dodson
  * @since 1.3.0

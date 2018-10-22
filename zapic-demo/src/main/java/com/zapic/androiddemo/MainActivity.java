@@ -13,20 +13,10 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
-
 import com.squareup.seismic.ShakeDetector;
-import com.zapic.sdk.android.Zapic;
-import com.zapic.sdk.android.ZapicCallback;
-import com.zapic.sdk.android.ZapicCompetition;
-import com.zapic.sdk.android.ZapicCompetitionStatus;
-import com.zapic.sdk.android.ZapicException;
-import com.zapic.sdk.android.ZapicPage;
-
+import com.zapic.sdk.android.*;
 import org.json.JSONException;
 import org.json.JSONObject;
-
-import io.branch.referral.Branch;
-import io.branch.referral.BranchError;
 
 public class MainActivity extends Activity implements ShakeDetector.Listener {
     private static final String TAG = "MainActivity";
@@ -95,7 +85,7 @@ public class MainActivity extends Activity implements ShakeDetector.Listener {
         challengesButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Zapic.showPage(MainActivity.this, ZapicPage.CHALLENGE_LIST);
+                Zapic.showPage(MainActivity.this, ZapicPages.CHALLENGE_LIST);
             }
         });
 
@@ -167,19 +157,19 @@ public class MainActivity extends Activity implements ShakeDetector.Listener {
 
         super.onStart();
 
-        Branch branch = Branch.getInstance();
-        branch.initSession(new Branch.BranchReferralInitListener() {
-            @Override
-            public void onInitFinished(JSONObject referringParams, BranchError error) {
-                if (referringParams != null) {
-                    Zapic.handleInteraction(referringParams);
-                } else {
-                    Log.e(TAG, error.getMessage());
-                }
-            }
-        }, this.getIntent().getData(), this);
+//        Branch branch = Branch.getInstance();
+//        branch.initSession(new Branch.BranchReferralInitListener() {
+//            @Override
+//            public void onInitFinished(JSONObject referringParams, BranchError error) {
+//                if (referringParams != null) {
+//                    Zapic.handleInteraction(referringParams);
+//                } else {
+//                    Log.e(TAG, error.getMessage());
+//                }
+//            }
+//        }, this.getIntent().getData(), this);
 
-        Zapic.getCompetitions(new ZapicCallback<ZapicCompetition[]>() {
+        Zapic.getCompetitions(new ZapicQueryCallback<ZapicCompetition[]>() {
             @Override
             public void onComplete(ZapicCompetition[] result, ZapicException error) {
                 if (error != null) {
@@ -201,7 +191,7 @@ public class MainActivity extends Activity implements ShakeDetector.Listener {
                         competitionButton.setVisibility(View.GONE);
                     } else {
                         TextView competitionButtonText = MainActivity.this.findViewById(R.id.activity_main_competition_button_text);
-                        competitionButtonText.setText(activeCompetition.getStatus() == ZapicCompetitionStatus.ACCEPTED ? R.string.competition_button_view : R.string.competition_button_join);
+                        competitionButtonText.setText(activeCompetition.getStatus() == ZapicCompetition.Status.ACCEPTED ? R.string.competition_button_view : R.string.competition_button_join);
                     }
                 }
             }

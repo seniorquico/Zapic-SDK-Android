@@ -42,6 +42,14 @@ public final class ZapicPage {
     public static final String LOGIN = "Login";
 
     /**
+     * Identifies a page that shows a form to logout.
+     *
+     * @since 1.3.0
+     */
+    @NonNull
+    public static final String LOGOUT = "Logout";
+
+    /**
      * Identifies a page that shows the profile.
      *
      * @since 1.3.0

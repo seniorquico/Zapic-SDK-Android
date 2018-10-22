@@ -1,13 +1,10 @@
 package com.zapic.sdk.android;
 
-import android.annotation.SuppressLint;
-import android.os.Build;
-import android.os.Handler;
-import android.os.HandlerThread;
-import android.os.Looper;
-import android.os.Message;
+import android.content.Context;
+import android.net.Uri;
+import android.os.*;
 import android.support.annotation.*;
-import android.webkit.JavascriptInterface;
+import android.webkit.*;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -19,7 +16,9 @@ import java.util.concurrent.Future;
 final class JavaScriptBridge {
     private static final int DISPATCH = 100;
 
-    private static final int HANDLE = 101;
+    private static final int DISPATCH_QUERY = 101;
+
+    private static final int HANDLE = 200;
 
     /**
      * The tag used to identify log messages.
@@ -28,22 +27,27 @@ final class JavaScriptBridge {
     private static final String TAG = "JavascriptBridge";
 
     @NonNull
-    private final Handler workerHandler;
-
-    @NonNull
-    private final Looper workerLooper;
-
-    @NonNull
-    private final JavaScriptBridge.Dispatcher dispatcher;
-
-    @NonNull
     private final Handler mainHandler;
 
     @NonNull
     private final Looper mainLooper;
 
-    JavaScriptBridge(@NonNull final JavaScriptBridge.Dispatcher dispatcher) {
-        this.dispatcher = dispatcher;
+    @NonNull
+    private final HashMap<UUID, ZapicQuery> queries;
+
+    @NonNull
+    private final Handler workerHandler;
+
+    @NonNull
+    private final Looper workerLooper;
+
+    private WebView webView;
+
+    private WebMessagePort webViewPort;
+
+    @MainThread
+    JavaScriptBridge(Context context) {
+        this.queries = new HashMap<>();
 
         this.mainLooper = Looper.getMainLooper();
         this.mainHandler = new Handler(this.mainLooper) {
@@ -55,25 +59,25 @@ final class JavaScriptBridge {
                     return;
                 }
 
-                switch (msg.what) {
-                    case 1:
-                        Result result = (Result)msg.obj;
-                        result.callback.onComplete(result.result, result.error);
-                        result.callback = null;
-                        msg.obj = null;
-                        break;
-                    case DISPATCH:
-                        try {
-                            JavaScriptBridge.this.dispatcher.dispatch((String) msg.obj);
-                        } catch (ZapicException e) {
-                            ZapicLog.e(TAG, e, "Error!");
-                        }
-
-                        break;
-                    default:
-                        ZapicLog.e(TAG, "Received invalid message: %d", msg.what);
-                        break;
-                }
+//                switch (msg.what) {
+//                    case DISPATCH_QUERY:
+//                        Result result = (Result)msg.obj;
+//                        result.callback.onComplete(result.result, result.error);
+//                        result.callback = null;
+//                        msg.obj = null;
+//                        break;
+//                    case 0:
+//                        try {
+//                            JavaScriptBridge.this.dispatcher.dispatch((String) msg.obj);
+//                        } catch (ZapicException e) {
+//                            ZapicLog.e(TAG, e, "Error!");
+//                        }
+//
+//                        break;
+//                    default:
+//                        ZapicLog.e(TAG, "Received invalid message: %d", msg.what);
+//                        break;
+//                }
             }
         };
 
@@ -86,68 +90,123 @@ final class JavaScriptBridge {
             @WorkerThread
             public void handleMessage(Message msg) {
                 if (msg == null) {
-                    ZapicLog.e(TAG, "Received invalid message from JavaScript bridge: null");
                     return;
                 }
 
                 switch (msg.what) {
-                    case 1:
-                        Result challengesResult = new Result();
-                        challengesResult.callback = (ZapicQueryCallback) msg.obj;
-                        challengesResult.error = null;
-                        challengesResult.result = new ZapicChallenge[0];
-                        msg.obj = null;
-                        JavaScriptBridge.this.mainHandler.obtainMessage(1, challengesResult).sendToTarget();
-                        break;
-                    case 2:
-                        Result competitionsResult = new Result();
-                        competitionsResult.callback = (ZapicQueryCallback) msg.obj;
-                        competitionsResult.error = null;
-                        competitionsResult.result = new ZapicCompetition[0];
-                        msg.obj = null;
-                        JavaScriptBridge.this.mainHandler.obtainMessage(1, competitionsResult).sendToTarget();
-                        break;
-                    case 3:
-                        Result playerResult = new Result();
-                        playerResult.callback = (ZapicQueryCallback) msg.obj;
-                        playerResult.error = null;
-                        playerResult.result = null;
-                        msg.obj = null;
-                        JavaScriptBridge.this.mainHandler.obtainMessage(1, playerResult).sendToTarget();
-                        break;
-                    case 4:
-                        Result statisticsResult = new Result();
-                        statisticsResult.callback = (ZapicQueryCallback) msg.obj;
-                        statisticsResult.error = null;
-                        statisticsResult.result = new ZapicStatistic[0];
-                        msg.obj = null;
-                        JavaScriptBridge.this.mainHandler.obtainMessage(1, statisticsResult).sendToTarget();
-                        break;
-                    case HANDLE:
-                        final String message = (String) msg.obj;
-                        final JSONObject parsedMessage;
+                    case JavaScriptBridge.DISPATCH_QUERY:
+                        final ZapicQuery query = (ZapicQuery) msg.obj;
+                        JavaScriptBridge.this.queries.put(query.getRequestId(), query);
+
+                        final String action;
                         try {
-                            parsedMessage = new JSONObject(message);
+                            action = new JSONObject()
+                                    .put("type", "query")
+                                    .put("payload", new JSONObject()
+                                            .put("requestId", query.getRequestId().toString())
+                                            .put("dataType", query.getDataType())
+                                            .put("dataTypeVersion", query.getDataTypeVersion()))
+                                    .toString();
                         } catch (JSONException e) {
-                            ZapicLog.e(TAG, e, "Received invalid message from Zapic application: %s", message);
+                            ZapicLog.e(JavaScriptBridge.TAG, "Failed to serialize the action", e);
                             return;
                         }
 
-                        JavaScriptBridge.this.onReceive(parsedMessage);
+                        JavaScriptBridge.this.mainHandler
+                                .obtainMessage(
+                                        JavaScriptBridge.DISPATCH,
+                                        new JavaScriptBridge.Action(action, query.getRequestId()))
+                                .sendToTarget();
                         break;
                     default:
-                        ZapicLog.e(TAG, "Received invalid message from JavaScript bridge: %d", msg.what);
+                        ZapicLog.e(JavaScriptBridge.TAG, "Received invalid message from JavaScript bridge: %d", msg.what);
                         break;
                 }
             }
         };
+
+        final String html = "<html>" +
+                "<head>" +
+                "<title>Demo</title>" +
+                "</head>" +
+                "<body>" +
+                "<script>" +
+                "  window.addEventListener('message', function(event) {" +
+                "    if (event.origin !== \"https://app.zapic.net\") {" +
+                "      return;" +
+                "    }" +
+                "    if (event.data !== \"start\") {" +
+                "      return;" +
+                "    }" +
+                "    window.zapicPort = event.ports[0];" +
+                "    window.zapicPort.onmessage = function(event) {" +
+                "      console.log(JSON.stringify(event));" +
+                "    }" +
+                "  });" +
+                "</script>" +
+                "</body>" +
+                "</html";
+        webView = new WebView(context);
+        webView.loadDataWithBaseURL("https://app.zapic.net/", "", "text/html", "utf-8", "https://app.zapic.net/");
+        webView.getSettings().setJavaScriptEnabled(true);
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            @RequiresApi(api = Build.VERSION_CODES.M)
+            public void onPageFinished(final WebView view, final String url) {
+                super.onPageFinished(view, url);
+
+                if ("https://app.zapic.net/".equals(url)) {
+                    final WebMessagePort[] webViewPorts = webView.createWebMessageChannel();
+
+                    webViewPort = webViewPorts[0];
+                    webViewPort.setWebMessageCallback(new WebMessagePort.WebMessageCallback() {
+                        @Override
+                        public void onMessage(final WebMessagePort port, final WebMessage message) {
+                            super.onMessage(port, message);
+                        }
+                    }, workerHandler);
+
+                    webView.postWebMessage(new WebMessage("start", new WebMessagePort[] { webViewPorts[1] }), Uri.parse("https://app.zapic.net"));
+                }
+            }
+        });
+
+//        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+//            final WebMessagePort[] ports = webView.createWebMessageChannel();
+//            ports[0].setWebMessageCallback(new WebMessagePort.WebMessageCallback() {
+//                @Override
+//                public void onMessage(final WebMessagePort port, final WebMessage message) {
+//                }
+//            }, this.workerHandler);
+//            webView.postWebMessage(new WebMessage("", new WebMessagePort[] { ports[1] }), "https://app.zapic.net");
+//        }
     }
 
-    private static class Result
+    private static class Action {
+        @NonNull
+        private final String action;
+
+        @Nullable
+        private final UUID requestId;
+
+        private Action(@NonNull final String action, @Nullable final UUID requestId) {
+            this.action = action;
+            this.requestId = requestId;
+        }
+    }
+
+    private static class ErrorResponse
     {
-        ZapicQueryCallback callback;
-        ZapicException error;
-        Object result;
+        @NonNull
+        private final ZapicException error;
+
+        @Nullable
+        private final UUID requestId;
+
+        private ErrorResponse(@NonNull final ZapicException error, @Nullable final UUID requestId) {
+            this.error = error;
+            this.requestId = requestId;
+        }
     }
 
     @AnyThread
@@ -160,26 +219,30 @@ final class JavaScriptBridge {
 
     @AnyThread
     Future<?> getChallenges(@NonNull final ZapicQueryCallback<ZapicChallenge[]> callback) {
-        this.workerHandler.obtainMessage(1, callback).sendToTarget();
-        return ImmediateFuture.getInstance();
+        final ZapicQuery<ZapicChallenge[]> query = new ZapicQuery<>(UUID.randomUUID(), ZapicQuery.DataType.CHALLENGE_LIST, 1, callback);
+        this.workerHandler.obtainMessage(JavaScriptBridge.DISPATCH_QUERY, query).sendToTarget();
+        return query;
     }
 
     @AnyThread
     Future<?> getCompetitions(@NonNull final ZapicQueryCallback<ZapicCompetition[]> callback) {
-        this.workerHandler.obtainMessage(2, callback).sendToTarget();
-        return ImmediateFuture.getInstance();
+        final ZapicQuery<ZapicCompetition[]> query = new ZapicQuery<>(UUID.randomUUID(), ZapicQuery.DataType.COMPETITION_LIST, 1, callback);
+        this.workerHandler.obtainMessage(JavaScriptBridge.DISPATCH_QUERY, query).sendToTarget();
+        return query;
     }
 
     @AnyThread
     Future<?> getPlayer(@NonNull final ZapicQueryCallback<ZapicPlayer> callback) {
-        this.workerHandler.obtainMessage(3, callback).sendToTarget();
-        return ImmediateFuture.getInstance();
+        final ZapicQuery<ZapicPlayer> query = new ZapicQuery<>(UUID.randomUUID(), ZapicQuery.DataType.PLAYER, 1, callback);
+        this.workerHandler.obtainMessage(JavaScriptBridge.DISPATCH_QUERY, query).sendToTarget();
+        return query;
     }
 
     @AnyThread
     Future<?> getStatistics(@NonNull final ZapicQueryCallback<ZapicStatistic[]> callback) {
-        this.workerHandler.obtainMessage(4, callback).sendToTarget();
-        return ImmediateFuture.getInstance();
+        final ZapicQuery<ZapicStatistic[]> query = new ZapicQuery<>(UUID.randomUUID(), ZapicQuery.DataType.STATISTIC_LIST, 1, callback);
+        this.workerHandler.obtainMessage(JavaScriptBridge.DISPATCH_QUERY, query).sendToTarget();
+        return query;
     }
 
     void handleEvent(@NonNull final JSONObject event) {

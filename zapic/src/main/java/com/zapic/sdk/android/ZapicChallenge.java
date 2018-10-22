@@ -1,10 +1,9 @@
 package com.zapic.sdk.android;
 
-import android.support.annotation.AnyThread;
-import android.support.annotation.CheckResult;
-import android.support.annotation.NonNull;
-import android.support.annotation.Nullable;
+import android.support.annotation.*;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.Date;
 
 /**
@@ -70,7 +69,7 @@ public final class ZapicChallenge {
     /**
      * The current status.
      */
-    @ZapicChallengeStatusDef
+    @ZapicChallenge.StatusDef
     private final int status;
 
     /**
@@ -113,7 +112,7 @@ public final class ZapicChallenge {
             @NonNull final Date start,
             @NonNull final Date end,
             final long totalUsers,
-            @ZapicChallengeStatusDef final int status,
+            @ZapicChallenge.StatusDef final int status,
             @Nullable final Double score,
             @Nullable final String formattedScore,
             @Nullable final Long rank) {
@@ -278,15 +277,15 @@ public final class ZapicChallenge {
     /**
      * Gets the current status.
      * <p>
-     * This will be equal to {@link ZapicChallengeStatus#INVITED}, {@link ZapicChallengeStatus#IGNORED}, or
-     * {@link ZapicChallengeStatus#ACCEPTED}.
+     * This will be equal to {@link ZapicChallenge.Status#INVITED}, {@link ZapicChallenge.Status#IGNORED}, or
+     * {@link ZapicChallenge.Status#ACCEPTED}.
      *
      * @return The current status.
      * @since 1.3.0
      */
     @AnyThread
     @CheckResult
-    @ZapicChallengeStatusDef
+    @ZapicChallenge.StatusDef
     public int getStatus() {
         return this.status;
     }
@@ -316,5 +315,53 @@ public final class ZapicChallenge {
     @CheckResult
     public long getTotalUsers() {
         return this.totalUsers;
+    }
+
+    /**
+     * @author Kyle Dodson
+     * @since 1.3.0
+     */
+    @IntDef({
+            ZapicChallenge.Status.INVITED,
+            ZapicChallenge.Status.IGNORED,
+            ZapicChallenge.Status.ACCEPTED
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface StatusDef {
+    }
+
+    /**
+     * Provides constant values that identify the different statuses of the player in a Zapic challenge.
+     *
+     * @author Kyle Dodson
+     * @since 1.3.0
+     */
+    public final class Status {
+        /**
+         * Identifies when the player has received an invitation to join the challenge.
+         *
+         * @since 1.3.0
+         */
+        public static final int INVITED = 0;
+
+        /**
+         * Identifies when the player has ignored an invitation to join the challenge.
+         *
+         * @since 1.3.0
+         */
+        public static final int IGNORED = 1;
+
+        /**
+         * Identifies when the player has accepted an invitation to join the challenge.
+         *
+         * @since 1.3.0
+         */
+        public static final int ACCEPTED = 2;
+
+        /**
+         * Prevents creating a new {@link ZapicChallenge.Status} instance.
+         */
+        private Status() {
+        }
     }
 }

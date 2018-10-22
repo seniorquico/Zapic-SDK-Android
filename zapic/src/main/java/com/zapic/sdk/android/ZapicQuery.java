@@ -1,5 +1,6 @@
 package com.zapic.sdk.android;
 
+import android.os.SystemClock;
 import android.support.annotation.*;
 import android.util.Log;
 
@@ -13,30 +14,36 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * A future that represents a query to the Zapic application.
+ * Represents a Zapic query as a {@link Future}.
  * <p>
- * The {@code done} method must be invoked on the application's main thread to complete the future and invoke the result
- * callback. The {@code cancel} method may be invoked on any thread to cancel the future. The {@code get} methods always
- * return {@code null} when the future is complete.
+ * The {@code done} method must be invoked to complete the future and invoke the callback. The {@code done} method must
+ * be invoked on the application's main thread. The {@code cancel} method may be invoked on any thread to cancel the
+ * future. The {@code get} methods always return {@code null} when the future is complete.
  *
- * @param <Result> The data type of the result.
+ * @param <Result> The type of the result.
  */
-final class QueryFuture<Result> implements Future {
-    /**
-     * The number of nanoseconds per microsecond.
-     */
-    private static final int NANOSECONDS_PER_MICROSECOND = 1000;
-
-    /**
-     * The number of nanoseconds per millisecond.
-     */
-    private static final int NANOSECONDS_PER_MILLISECOND = 1000000;
-
+final class ZapicQuery<Result> implements Future {
     /**
      * The tag used to identify log messages.
      */
     @NonNull
-    private static final String TAG = "QueryFuture";
+    private static final String TAG = "ZapicQuery";
+
+    /**
+     * The result callback invoked when the future is complete.
+     */
+    @NonNull
+    private final ZapicQueryCallback<Result> callback;
+
+    /**
+     * The data type.
+     */
+    private final String dataType;
+
+    /**
+     * The data type version.
+     */
+    private final int dataTypeVersion;
 
     /**
      * The request identifier.
@@ -45,56 +52,48 @@ final class QueryFuture<Result> implements Future {
     private final UUID requestId;
 
     /**
-     * The
-     */
-    private final int dataType;
-
-    /**
-     * The
-     */
-    private final int dataTypeVersion;
-    /**
-     * The result callback invoked when the future is complete.
-     */
-    @NonNull
-    private final ZapicQueryCallback<Result> callback;
-
-    /**
      * The lock object used to synchronize access to {@code cancelled} and {@code done}.
      */
     @NonNull
     private final Object lock;
+
     /**
      * The system time when the future started.
      */
     private final long startTime;
+
     /**
      * A value indicating whether the future has been cancelled.
      */
     private boolean cancelled;
+
     /**
      * A value indicating whether the future has completed.
      */
     private boolean done;
 
     /**
-     * Creates a new {@link QueryFuture} instance with the specified result callback.
+     * Creates a new {@link ZapicQuery} instance with the specified result callback.
      *
-     * @param callback The result callback invoked when the future is complete.
+     * @param requestId       The request identifier.
+     * @param dataType        The data type.
+     * @param dataTypeVersion The data type version.
+     * @param callback        The result callback invoked when the future is complete.
      */
-    QueryFuture(
+    @AnyThread
+    ZapicQuery(
             @NonNull final UUID requestId,
-            @QueryFuture.DataTypeDef final int dataType,
+            @ZapicQuery.DataTypeDef final String dataType,
             final int dataTypeVersion,
             @NonNull final ZapicQueryCallback<Result> callback) {
-        this.requestId = requestId;
-        this.dataType = dataType;
-        this.dataTypeVersion = dataTypeVersion;
         this.callback = callback;
         this.cancelled = false;
+        this.dataType = dataType;
+        this.dataTypeVersion = dataTypeVersion;
         this.done = false;
         this.lock = new Object();
-        this.startTime = System.nanoTime();
+        this.requestId = requestId;
+        this.startTime = SystemClock.uptimeMillis();
     }
 
     @AnyThread
@@ -121,7 +120,7 @@ final class QueryFuture<Result> implements Future {
                 this.cancelled = true;
                 this.lock.notifyAll();
 
-                ZapicLog.d(QueryFuture.TAG, "Cancelled asynchronous query to the Zapic application");
+                ZapicLog.i(ZapicQuery.TAG, "Cancelled asynchronous query to the Zapic application");
                 return true;
             }
 
@@ -154,43 +153,28 @@ final class QueryFuture<Result> implements Future {
             this.lock.notifyAll();
         }
 
-        long callbackStartTime = System.nanoTime();
+        long callbackStartTime = SystemClock.uptimeMillis();
         try {
             this.callback.onComplete(result, error);
         } catch (Exception e) {
-            ZapicLog.e(QueryFuture.TAG, e, "An uncaught error occurred invoking the result callback");
+            ZapicLog.e(ZapicQuery.TAG, e, "An uncaught error occurred invoking the result callback");
         } catch (Throwable t) {
-            ZapicLog.e(QueryFuture.TAG, t, "An uncaught error occurred invoking the result callback");
+            ZapicLog.e(ZapicQuery.TAG, t, "An uncaught error occurred invoking the result callback");
             throw t;
         } finally {
             int logLevel = ZapicLog.getLogLevel();
-            if (logLevel <= Log.DEBUG) {
+            if (logLevel <= Log.INFO) {
                 final NumberFormat numberFormat = NumberFormat.getIntegerInstance();
-                long endTime = System.nanoTime();
+                long endTime = SystemClock.uptimeMillis();
 
                 long callbackDuration = endTime - callbackStartTime;
-                String callbackDuration2;
-                if (callbackDuration >= QueryFuture.NANOSECONDS_PER_MILLISECOND) {
-                    callbackDuration2 = numberFormat.format(TimeUnit.NANOSECONDS.toMillis(callbackDuration)) + "ms";
-                } else if (callbackDuration >= QueryFuture.NANOSECONDS_PER_MICROSECOND) {
-                    callbackDuration2 = numberFormat.format(TimeUnit.NANOSECONDS.toMicros(callbackDuration)) +
-                            "\u00B5s";
-                } else {
-                    callbackDuration2 = numberFormat.format(callbackDuration) + "ns";
-                }
+                String callbackDuration2 = numberFormat.format(callbackDuration) + "ms";
 
                 long duration = endTime - this.startTime;
-                String duration2;
-                if (duration >= QueryFuture.NANOSECONDS_PER_MILLISECOND) {
-                    duration2 = numberFormat.format(TimeUnit.NANOSECONDS.toMillis(duration)) + "ms";
-                } else if (duration >= QueryFuture.NANOSECONDS_PER_MICROSECOND) {
-                    duration2 = numberFormat.format(TimeUnit.NANOSECONDS.toMicros(duration)) + "\u00B5s";
-                } else {
-                    duration2 = numberFormat.format(duration) + "ns";
-                }
+                String duration2 = numberFormat.format(duration) + "ms";
 
-                ZapicLog.d(
-                        QueryFuture.TAG,
+                ZapicLog.i(
+                        ZapicQuery.TAG,
                         "Completed asynchronous query to the Zapic application in %s (completed result callback in %s)",
                         duration2,
                         callbackDuration2);
@@ -265,43 +249,77 @@ final class QueryFuture<Result> implements Future {
         return null;
     }
 
-    @IntDef({
-            QueryFuture.DataType.CHALLENGE_LIST,
-            QueryFuture.DataType.COMPETITION_LIST,
-            QueryFuture.DataType.PLAYER,
-            QueryFuture.DataType.STATISTIC_LIST,
+    /**
+     * Gets the data type.
+     *
+     * @return The data type.
+     */
+    @AnyThread
+    @CheckResult
+    @ZapicQuery.DataTypeDef
+    String getDataType() {
+        return this.dataType;
+    }
+
+    /**
+     * Gets the data type version.
+     *
+     * @return The data type version.
+     */
+    @AnyThread
+    @CheckResult
+    int getDataTypeVersion() {
+        return this.dataTypeVersion;
+    }
+
+    /**
+     * Gets the request identifier.
+     *
+     * @return The request identifier.
+     */
+    @AnyThread
+    @CheckResult
+    @NonNull
+    UUID getRequestId() {
+        return this.requestId;
+    }
+
+    @StringDef({
+            ZapicQuery.DataType.CHALLENGE_LIST,
+            ZapicQuery.DataType.COMPETITION_LIST,
+            ZapicQuery.DataType.PLAYER,
+            ZapicQuery.DataType.STATISTIC_LIST,
     })
     @Retention(RetentionPolicy.SOURCE)
-    @SuppressWarnings({"unused", "WeakerAccess"})
     @interface DataTypeDef {
     }
 
     /**
-     * Represents the types of queries supported by the Zapic SDK and the Zapic application.
+     * Provides constant values that identify the different data types.
      */
     final static class DataType {
         /**
          * Identifies a query for the list of challenges.
          */
-        final static int CHALLENGE_LIST = 1000;
+        final static String CHALLENGE_LIST = "challenges";
 
         /**
          * Identifies a query for the list of competitions.
          */
-        final static int COMPETITION_LIST = 1001;
+        final static String COMPETITION_LIST = "competitions";
 
         /**
          * Identifies a query for the player.
          */
-        final static int PLAYER = 1002;
+        final static String PLAYER = "player";
 
         /**
          * Identifies a query for the list of statistics.
          */
-        final static int STATISTIC_LIST = 1003;
+        final static String STATISTIC_LIST = "statistics";
 
         /**
-         * Prevents creating a new {@link QueryFuture.DataType} instance.
+         * Prevents creating a new {@link ZapicQuery.DataType} instance.
          */
         private DataType() {
         }
